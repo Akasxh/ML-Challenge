@@ -1,153 +1,165 @@
-# ML Challenge 2025: Smart Product Pricing Solution Template
-
-**Team Name:** Apex
-
-**Team Members:** 
-
-<div align="center">
-
-| Name             | GitHub                                       | LinkedIn                                                           | Department @ IIT Patna |
-|:-----------------|:--------------------------------------------:|:------------------------------------------------------------------:|:----------------------:|
-| **S Akash** | [@Akasxh](https://github.com/Akasxh)         | [LinkedIn](https://www.linkedin.com/in/s-akash-project-gia/)       | EEE                    |
-| **Anirudh D Bhat** | [@RudhaTR](https://github.com/RudhaTR)       | [LinkedIn](https://www.linkedin.com/in/anirudh-d-bhat/)            | CSE                    |
-| **Akash S** | [@akash1764591](https://github.com/akash1764591)| [LinkedIn](https://www.linkedin.com/in/akash-s-473781263/)          | EEE                    |
-| **Ammar Ahmad** | [@ammarrahmad](https://github.com/ammarrahmad)| [LinkedIn](https://www.linkedin.com/in/ammar-ahmad-5a8343251/)      | AI & DS                |
-
-</div>
+# ML Challenge 2025 — Smart Product Pricing (Team **Apex**)
 
 **Submission Date:** 13/10/2025
 
----
+<div align="center">
 
-## 1. Executive Summary
+| Name               |                      GitHub                      |                            LinkedIn                            | Department @ IIT Patna |
+| :----------------- | :----------------------------------------------: | :------------------------------------------------------------: | :--------------------: |
+| **S Akash**        |       [@Akasxh](https://github.com/Akasxh)       |  [LinkedIn](https://www.linkedin.com/in/s-akash-project-gia/)  |           EEE          |
+| **Anirudh D Bhat** |      [@RudhaTR](https://github.com/RudhaTR)      |     [LinkedIn](https://www.linkedin.com/in/anirudh-d-bhat/)    |           CSE          |
+| **Akash S**        | [@akash1764591](https://github.com/akash1764591) |   [LinkedIn](https://www.linkedin.com/in/akash-s-473781263/)   |           EEE          |
+| **Ammar Ahmad**    |  [@ammarrahmad](https://github.com/ammarrahmad)  | [LinkedIn](https://www.linkedin.com/in/ammar-ahmad-5a8343251/) |         AI & DS        |
 
-Our solution addresses the product pricing challenge by fine-tuning a large transformer model, 
-DeBERTa-v3-large, on carefully engineered textual features. We developed an efficient hybrid 
-data preparation pipeline that uses Regex for rapid parsing and a targeted LLM for imputing 
-missing values. This approach achieved a final SMAPE of 42.22% on the validation set of 7500 
-samples, demonstrating the effectiveness of modern NLP models for complex regression tasks
-
----
-
-## 2. Methodology Overview
-
-### 2.1 Problem Analysis
-
-We interpreted the challenge as a text-based regression problem. The primary goal was to 
-predict a continuous price variable from semi-structured catalog descriptions. Our initial 
-Exploratory Data Analysis (EDA) revealed several key characteristics of the dataset.
-
-**Key Observations:**
-
-● Skewed Target Variable: The product price was heavily right-skewed, which required a 
-logarithmic transformation (log1p) to normalize the distribution for model training. 
-
-● Semi-Structured Text: The catalog_content field contained a mix of structured data 
-(item name, value, unit ,descriptions, bullet points)., which might or might not be present 
-at times or have None values .This required a robust parsing strategy. 
-
-● Data Redundancy: Information from the product images was almost always present in 
-the text descriptions. We concluded that a text-only approach would be more 
-computationally efficient without a significant loss of information.Since we would use 
-image to augment our description if we did not have information(unable to implement 
-due to compute and time constraint)
-
-### 2.2 Solution Strategy
-
-Our strategy centered on transforming the semi-structured text into a rich, consistent format and 
-then leveraging a powerful pre-trained language model to learn the relationship between the 
-description and the price.
-
-**Approach Type:** Single Model (Fine-tuned Transformer with a Regression Head)
-
-**Core Innovation:**  A hybrid feature engineering pipeline that combines the speed of Regular 
-Expressions for extracting common data points (value, unit) with the intelligence of a 
-Language Model for targeted imputation of missing or complex entries. This provided a 
-high-quality dataset without the prohibitive computational cost of processing every entry with an 
-LLM.
+</div>
 
 ---
 
-## 3. Model Architecture
+## 1) Executive Summary
 
-### 3.1 Architecture Overview
+We tackle **product price prediction from semi‑structured catalog text** as a **text regression** problem. After building a **hybrid data preparation pipeline** (Regex for fast parsing + a targeted small LLM for imputation), we fine‑tune **DeBERTa‑v3‑large** with a lightweight regression head.
 
-Our model follows a standard architecture for text regression using a pre-trained transformer. 
-The processed text is tokenized and fed into the DeBERTa encoder. The final hidden state of 
-the [CLS] token (or mean-pooled output) is then passed through a multi-layer perceptron (MLP) 
-regression head to produce the final log-price prediction. 
+* **Best validation SMAPE:** **42.22%** on a 7,500‑sample hold‑out split
+* **Other metrics:** **MAE:** $9.44, **R²:** 0.29
+* **Training size:** 67,499 samples; **epochs:** 10
 
-### Model Pipeline :
+The key insight is that **pragmatic feature engineering**—extracting value/unit/name via Regex and using an LLM *only where needed*—yields cleaner inputs at a fraction of the compute of fully LLM‑driven structuring.
+
+---
+
+## 2) Problem & Data
+
+### 2.1 Task
+
+Predict a continuous **price** from a textual **catalog_content** field (semi‑structured lines with optional bullets). Images were available but largely redundant with text for this challenge.
+
+### 2.2 Dataset Fields
+
+* `serial_id`, `price` (target), `image_link`, `catalog_content` (primary feature)
+
+### 2.3 EDA Highlights
+
+* **Right‑skewed target** → apply `log1p(price)` during training
+* **Semi‑structured text** with (often) this pattern:
+
+  1. Item name / short description
+  2. Numeric value/quantity (e.g., `12`, `16.9`)
+  3. Unit (e.g., `oz`, `count`)
+  4. Longer description / bullets (optional)
+* **Image information** mostly duplicated in text → **text‑only** approach favored for compute efficiency (we would have augmented with VLM when text was insufficient, but compute/time constraints prevented it)
+
+---
+
+## 3) Methodology
+
+### 3.1 Data Preparation (Hybrid Regex + Targeted LLM)
+
+1. **Regex extraction** of **item name**, **value**, **unit**, plus concatenation of remaining text as **description**.
+2. **Targeted LLM imputation** for rows where Regex fails (fills `None` / `NA` gracefully).
+3. **Sensible defaults** for residual nulls (e.g., `unit = "count"`, `description = "no description"`).
+4. **Structured prompt string** fed to the model:
+
+```
+Category: [category] [SEP] description: [description] [SEP] Amount: [value] [unit]
+```
+
+5. Apply **log1p** transform to `price` for training; use **expm1** for inverse transform at inference.
+
+### 3.2 Model Architecture
+
+* **Backbone:** `microsoft/deberta-v3-large`
+* **Head:** MLP regression head on top of final encoder representation (CLS/pooled)
+* **Loss:** Huber during training (stable for heavy‑tailed targets)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/a7127382-e4b3-49b5-be4a-60573feca2eb" alt="image" width="680" height="362" />
+  <img src="https://github.com/user-attachments/assets/a7127382-e4b3-49b5-be4a-60573feca2eb" alt="pipeline" width="680" height="362" />
 </p>
 
-### 3.2 Model Components
+### 3.3 Training Setup (Key Hyperparameters)
 
-**Text Processing Pipeline:**
-- Preprocessing steps:
-  - Extract item name, value, unit, and description from raw catalog content using Regex.
-  - Use a small LLM to fill None/NA values where Regex failed.
-  - Impute remaining nulls with defaults (e.g., unit='Count', description='no description').
-  - Combine the extracted features into a single structured string: Category: [category] [SEP] description: [description] [SEP] Amount: [value] [unit].
-  - Apply a log1p transformation to the target price variable
-
-- Model type: microsoft/deberta-v3-large 
-- Key parameters:
-  - Max sequence length: 160
-  - Dropout: 0.2
-  - Encoder Learning Rate: 2e-5
-  - Head Learning Rate: 1e-3
-  - Batch Size: 16
-    
----
-
-
-## 4. Model Performance
-
-### 4.1 Final Test Set Results 
-
-The model was trained for 10 epochs on a training set of 67,499 samples. The final evaluation 
-on the held-out test set of 7500 samples yielded the following results: 
-
-- SMAPE Score: 42.22% 
-- Other Metrics: 
-- Mean Absolute Error (MAE): $9.44 
-- R-squared (R²): 0.29
-
-## 5. Conclusion
-
-Our approach successfully demonstrates that fine-tuning a large transformer model like 
-DeBERTa-v3-large is a highly effective strategy for price prediction from textual data. The key 
-lesson was the importance of pragmatic feature engineering; our hybrid Regex-LLM pipeline 
-provided a crucial balance between data quality and computational feasibility. The final model 
-delivered a strong SMAPE score of 42.22%, validating our methodology. 
+* Max sequence length **160**
+* Dropout **0.2**
+* Encoder LR **2e‑5**; Head LR **1e‑3**
+* Batch size **16**
+* Epochs **10** (best run)
 
 ---
 
-## Appendix
+## 4) Results
 
-### A. Code artefacts
+We use **SMAPE** as the primary metric:
 
-A link to the complete code directory can be found below. For immediate reference, the main 
-training and evaluation script is also attached in this appendix.
+SMAPE = (1/n) * Σ |predicted_price - actual_price| / ((|actual_price| + |predicted_price|)/2)
 
+### 4.1 Final Hold‑out (7,500 samples)
 
-Link : `https://drive.google.com/file/d/1WwFyzrKUbCFXXAKv7RyQjrae3UFAftzB/view?usp=sharing`
+* **SMAPE:** **42.22%**
+* **MAE:** **$9.44**
+* **R²:** **0.29**
+* **Training epochs:** **10**, **Layers:** 512→256 MLP head, **Train Loss (Huber) @ epoch 10:** 0.0276
 
-This repository contains all the codes for the solution and the experiments done.
+### 4.2 Selected Experiment Snapshots (Ablations)
 
+**A) Head depth/epochs vs. performance (DeBERTa‑v3‑large):**
 
-### B. Additional Results
+| Epochs | MLP Head (dims) |  MAE ($) |    R²    | SMAPE (%) |
+| :----: | :-------------: | :------: | :------: | :-------: |
+|    5   |    512 → 256    |   9.53   |   0.28   |   42.69   |
+|    5   |    768 → 384    |   9.63   |   0.29   |   42.86   |
+|    7   |    512 → 256    |   9.50   |   0.28   |   42.68   |
+| **10** |  **512 → 256**  | **9.44** | **0.29** | **42.22** |
 
-During our experimentation phase, we tested several alternative models. The results below 
-informed our decision to focus on fine-tuning a large transformer model. 
-- DeBERTa-v3-base: 43.59% SMAPE 
-- DistilBERT: 45% SMAPE (used for rapid prototyping) 
-- Sentence Embeddings + XGBoost: 52% SMAPE 
-- Sentence Embeddings + Neural Network: 49% SMAPE 
-- LLM Fine-Tuning (SFT/IFT): Explored but abandoned due to excessive training time 
-and compute requirements, which hindered effective iteration.
+**B) Model family comparisons (same pipeline):**
+
+| Approach                               | Validation SMAPE (%) |
+| :------------------------------------- | :------------------: |
+| **DeBERTa‑v3‑large + head (final)**    |       **42.22**      |
+| DeBERTa‑v3‑base + head                 |         43.59        |
+| DistilBERT + head (baseline)           |         45.00        |
+| Sentence Embeddings + Neural Net       |         49.00        |
+| Sentence Embeddings + XGBoost          |         52.00        |
+| BERT Encodings + XGBoost               |        ~50.00        |
+| LLM SFT (phi‑3‑mini‑instruct, 1 epoch) |     ~48.00 (slow)    |
+| IFT (Qwen‑7B / phi‑3‑mini‑instruct)    |  Abandoned (compute) |
+
+> **Takeaway:** Larger encoders with careful regularization and a small regression head consistently outperform static‑embedding approaches and quick SFT/IFT attempts within realistic compute budgets.
 
 ---
+
+## 5) Discussion & Lessons
+
+* **Data > Model Size (alone):** The Regex→LLM hybrid pipeline delivered cleaner, more consistent inputs **without** the cost of fully LLM‑structuring the entire dataset.
+* **Target transformation matters:** `log1p` notably stabilized optimization for a heavy‑tailed price distribution.
+* **Vision deprioritized intentionally:** For this dataset, **text captured most of the useful variance**; image features were not critical under compute constraints.
+
+---
+
+## 6) Reproducibility (High‑Level)
+
+1. **Prepare data:** run parsing to extract `name/value/unit/description`; apply targeted LLM fills; form structured text field; compute `log1p(price)`.
+2. **Train:** fine‑tune `microsoft/deberta-v3-large` with the hyperparameters above; use Huber loss.
+3. **Evaluate:** compute SMAPE/MAE/R² on the 7,500‑sample hold‑out.
+4. **Infer:** predict on new `catalog_content`; inverse‑transform with `expm1`.
+
+> **Code & Scripts:**
+> **Drive (full code & experiments):** `https://drive.google.com/file/d/1WwFyzrKUbCFXXAKv7RyQjrae3UFAftzB/view?usp=sharing`
+
+---
+
+## 7) Appendix
+
+### A) Additional Experiment Notes (excerpts)
+
+* **Epoch 7/7:** Train Huber Loss ≈ **0.0470** → Test SMAPE **42.68%** (MAE $9.50, R² 0.28)
+* **Epoch 10/10:** Train Huber Loss **0.0276** → **Best** Test SMAPE **42.22%** (MAE $9.44, R² 0.29)
+
+### B) Potential Next Steps
+
+* Lightweight **category detection** and **“premium” heuristics** using small models/features to further de‑skew residuals.
+* Targeted **vision augmentation** only when Regex+LLM confidence is low.
+* **Quantization / LoRA** for faster ablation on larger backbones.
+* Calibrated **price intervals** (e.g., conformal) for actionable uncertainty estimates.
+
+---
+
+**Contact:** See team table (GitHub / LinkedIn) for profiles.
